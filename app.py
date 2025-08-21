@@ -92,7 +92,6 @@ def send_via_gmail(service, to, subject, body, is_html=False, attachment_path=No
     return service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 
-
 def extract_recipients(uploaded_file, manual_text):
     recipients = []
 
@@ -218,8 +217,6 @@ def send_bulk():
 
     threading.Thread(target=background_task).start()
     return f"Sending {len(recipients)} emails in background! You can close this page."
-
-
 
 if __name__ == "__main__":
     app.run(debug=True)
