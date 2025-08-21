@@ -1,0 +1,178 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+import os, json, base64, random, time
+import pandas as pd
+from werkzeug.utils import secure_filename
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+import threading
+
+app = Flask(__name__)
+app.secret_key = "super_secret_key"
+
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# Gmail API settings
+SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+CLIENT_SECRETS_FILE = os.path.join(UPLOAD_FOLDER, "credentials.json")
+TOKEN_FILE = os.path.join(UPLOAD_FOLDER, "token.json")
+
+# Global logs storage
+sending_logs = []
+
+# Allow HTTP (local dev)
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
+# ----------- Helpers ----------
+def save_credentials(creds):
+    with open(TOKEN_FILE, "w") as token_file:
+        token_file.write(creds.to_json())
+
+def load_credentials():
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, "r") as token_file:
+            data = json.load(token_file)
+            return Credentials.from_authorized_user_info(data, SCOPES)
+    return None
+
+@app.route("/upload_credentials", methods=["GET", "POST"])
+def upload_credentials():
+    if request.method == "POST":
+        credentials_file = request.files.get("credentials")
+        token_file = request.files.get("token")
+
+        if credentials_file and credentials_file.filename.endswith(".json"):
+            credentials_path = CLIENT_SECRETS_FILE
+            credentials_file.save(credentials_path)
+            flash("✅ credentials.json uploaded successfully")
+
+        if token_file and token_file.filename.endswith(".json"):
+            token_path = TOKEN_FILE
+            token_file.save(token_path)
+            flash("✅ token.json uploaded successfully (optional)")
+
+        return redirect(url_for("upload_credentials"))
+
+    return render_template("upload_credentials.html")
+
+def send_via_gmail(service, to, subject, body, is_html=False):
+    message = MIMEMultipart("alternative")
+    message["to"] = to
+    message["subject"] = subject
+
+    if is_html:
+        message.attach(MIMEText(body, "html"))
+    else:
+        message.attach(MIMEText(body, "plain"))
+
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    return service.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+def extract_recipients(uploaded_file, manual_text):
+    recipients = []
+
+    if manual_text.strip():
+        recipients.extend([r.strip() for r in manual_text.splitlines() if r.strip()])
+
+    if uploaded_file and uploaded_file.filename:
+        filename = secure_filename(uploaded_file.filename)
+        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        uploaded_file.save(path)
+
+        if filename.endswith(".csv"):
+            df = pd.read_csv(path)
+        else:
+            df = pd.read_excel(path)
+
+        if "email" in df.columns:
+            recipients.extend(df["email"].dropna().astype(str).tolist())
+        else:
+            recipients.extend(df.iloc[:, 0].dropna().astype(str).tolist())
+
+    return recipients
+
+
+# ----------- Routes ----------
+@app.route("/")
+def index():
+    creds = load_credentials()
+    if not creds or not creds.valid:
+        return redirect(url_for("authorize"))
+    return render_template("bulk.html")
+
+
+@app.route("/authorize")
+def authorize():
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True),
+    )
+    auth_url, state = flow.authorization_url(
+        access_type="offline", include_granted_scopes="true"
+    )
+    return redirect(auth_url)
+
+
+@app.route("/oauth2callback")
+def oauth2callback():
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True),
+    )
+    flow.fetch_token(authorization_response=request.url)
+    creds = flow.credentials
+    save_credentials(creds)
+    return redirect(url_for("index"))
+
+
+@app.route("/send_bulk", methods=["POST"])
+def send_bulk():
+    creds = load_credentials()
+    if not creds or not creds.valid:
+        return redirect(url_for("authorize"))
+
+    service = build("gmail", "v1", credentials=creds)
+
+    recipients = extract_recipients(request.files.get("file"), request.form["recipients"])
+    subjects = [s.strip() for s in request.form["subjects"].splitlines() if s.strip()]
+    bodies = [b.strip() for b in request.form["bodies"].split("===") if b.strip()]
+    pause = int(request.form["pause"])
+    is_html = "html" in request.form
+
+    sending_logs.clear()  # reset logs for new session
+
+    def background_task():
+        for idx, recipient in enumerate(recipients, 1):
+            subject = random.choice(subjects)
+            body = random.choice(bodies)
+            try:
+                msg = send_via_gmail(service, recipient.strip(), subject, body.strip(), is_html)
+                log = f"✅ {idx}/{len(recipients)} Sent to {recipient} (ID: {msg['id']})"
+            except Exception as e:
+                log = f"❌ {idx}/{len(recipients)} Failed {recipient}: {str(e)}"
+            sending_logs.append(log)
+            time.sleep(pause)
+
+    threading.Thread(target=background_task).start()
+
+    return redirect(url_for("logs"))
+
+
+@app.route("/logs")
+def logs():
+    return render_template("logs.html", logs=sending_logs)
+
+
+@app.route("/logs_json")
+def logs_json():
+    return jsonify(sending_logs)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

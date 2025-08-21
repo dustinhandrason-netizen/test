@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bulk Email Sender</title>
+</head>
+<body>
+  <h2>Send Bulk Emails with Gmail API</h2>
+  <form action="/send_bulk" method="post" enctype="multipart/form-data">
+    <h3>Recipients</h3>
+    <p>Enter emails manually (one per line) OR upload CSV/Excel (must have column "email"):</p>
+    <textarea name="recipients" rows="6" cols="40"></textarea><br><br>
+    <input type="file" name="file" accept=".csv,.xlsx"><br><br>
+
+    <h3>Subjects (one per line)</h3>
+    <textarea name="subjects" rows="4" cols="40" required></textarea><br><br>
+
+    <h3>Bodies</h3>
+    <p>Separate multiple versions with <b>===</b></p>
+    <textarea name="bodies" rows="8" cols="50" required></textarea><br><br>
+
+    <input type="checkbox" name="html"> Send as HTML<br><br>
+
+    <label>Pause between emails (seconds):</label><br>
+    <input type="number" name="pause" value="5"><br><br>
+
+    <button type="submit">Send Bulk Emails</button>
+  </form>
+</body>
+</html>

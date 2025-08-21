@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bulk Email Results</title>
+</head>
+<body>
+  <h2>Bulk Email Sending Logs</h2>
+  <ul>
+    {% for log in logs %}
+      <li>{{ log }}</li>
+    {% endfor %}
+  </ul>
+  <br>
+  <a href="/">⬅ Back to Form</a>
+</body>
+</html>

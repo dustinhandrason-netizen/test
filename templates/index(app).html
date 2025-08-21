@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Send Email with Gmail API</title>
+</head>
+<body>
+  <h1>Send Email</h1>
+  <form action="/send" method="post">
+    <label>To:</label><br>
+    <input type="email" name="to" required><br><br>
+    <label>Subject:</label><br>
+    <input type="text" name="subject" required><br><br>
+    <label>Message:</label><br>
+    <textarea name="message" rows="5" cols="40" required></textarea><br><br>
+    <button type="submit">Send</button>
+  </form>
+</body>
+</html>
