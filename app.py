@@ -32,11 +32,18 @@ def save_credentials(creds):
         token_file.write(creds.to_json())
 
 def load_credentials():
+    """Try to load valid credentials from token.json"""
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE, "r") as token_file:
-            data = json.load(token_file)
-            return Credentials.from_authorized_user_info(data, SCOPES)
-    return None
+            try:
+                data = json.load(token_file)
+                creds = Credentials.from_authorized_user_info(data, SCOPES)
+                if creds and creds.valid:
+                    return creds
+            except Exception as e:
+                print("Invalid token.json:", e)
+    return None  # force re-authorization
+
 
 @app.route("/upload_credentials", methods=["GET", "POST"])
 def upload_credentials():
@@ -46,17 +53,11 @@ def upload_credentials():
             return redirect(request.url)
 
         credentials_file = request.files["credentials"]
-        token_file = request.files.get("token")
 
         if credentials_file and credentials_file.filename.endswith(".json"):
             credentials_path = os.path.join(app.config["UPLOAD_FOLDER"], "credentials.json")
             credentials_file.save(credentials_path)
             flash("credentials.json uploaded successfully")
-
-        if token_file and token_file.filename.endswith(".json"):
-            token_path = os.path.join(app.config["UPLOAD_FOLDER"], "token.json")
-            token_file.save(token_path)
-            flash("token.json uploaded successfully")
 
         return redirect(url_for("upload_credentials"))
 
@@ -113,11 +114,9 @@ def extract_recipients(uploaded_file, manual_text):
                     if not row:
                         continue
                     if header and "email" in [h.lower() for h in header]:
-                        # if file has header row with 'email'
                         email_index = [h.lower() for h in header].index("email")
                         recipients.append(row[email_index].strip())
                     else:
-                        # fallback: first column
                         recipients.append(row[0].strip())
 
         elif filename.endswith((".xls", ".xlsx")):
@@ -157,7 +156,7 @@ def authorize():
         redirect_uri=url_for("oauth2callback", _external=True),
     )
     auth_url, state = flow.authorization_url(
-        access_type="offline", include_granted_scopes="true"
+        access_type="offline", include_granted_scopes="true", prompt="consent"
     )
     return redirect(auth_url)
 
@@ -172,6 +171,7 @@ def oauth2callback():
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
     save_credentials(creds)
+    flash("Google account authorized successfully!", "success")
     return redirect(url_for("index"))
 
 
@@ -217,6 +217,7 @@ def send_bulk():
 
     threading.Thread(target=background_task).start()
     return f"Sending {len(recipients)} emails in background! You can close this page."
+
 
 if __name__ == "__main__":
     app.run(debug=True)
