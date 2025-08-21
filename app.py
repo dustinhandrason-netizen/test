@@ -12,16 +12,17 @@ from openpyxl import load_workbook   # for Excel reading
 app = Flask(__name__)
 app.secret_key = "super_secret_key"
 
+# Upload folder for credentials, token, recipient files
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # Gmail API settings
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
-CLIENT_SECRETS_FILE = "credentials.json"
-TOKEN_FILE = "token.json"
+CLIENT_SECRETS_FILE = os.path.join(UPLOAD_FOLDER, "credentials.json")
+TOKEN_FILE = os.path.join(UPLOAD_FOLDER, "token.json")
 
-# Allow HTTP (local dev)
+# Allow HTTP (local dev, disable in production if using HTTPS)
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 
