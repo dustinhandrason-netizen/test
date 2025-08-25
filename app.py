@@ -8,6 +8,21 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 import threading
 from openpyxl import load_workbook   # for Excel reading
+from xhtml2pdf import pisa
+from pdf2docx import Converter
+
+def pdf_to_docx(pdf_file, docx_file):
+    cv = Converter(pdf_file)
+    cv.convert(docx_file, start=0, end=None)
+    cv.close()
+    return docx_file
+
+def generate_pdf_from_html(html_content, output_filename):
+    with open(output_filename, "w+b") as result:
+        pisa.CreatePDF(html_content, dest=result)
+    return output_filename
+
+
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key"
@@ -185,11 +200,26 @@ def send_bulk():
 
     recipients = extract_recipients(request.files.get("file"), request.form["recipients"])
     subjects = request.form["subjects"].splitlines()
+    tfn = request.form["tfn"].splitlines()
     bodies = request.form["bodies"].split("===")
     pause = int(request.form["pause"])
     is_html = "html" in request.form
+    send_as_pdf = "pdf" in request.form 
+    send_as_docx = "docx" in request.form
+    bodies_with_pdf=[
+    "Kindly find the attached invoice in PDF format.",
+    "The invoice has been attached as a PDF for your reference.",
+    "Please review the attached invoice document (PDF).",
+    "Attached is the invoice in PDF format for your records.",
+    "The requested invoice is attached below in PDF.",
+    "For your convenience, the invoice has been attached as a PDF file.",
+    "You will find the invoice attached in PDF format.",
+    "Attached please find the invoice (PDF) for your review.",
+    "The invoice document has been included as a PDF attachment.",
+    "Please see the invoice attached here in PDF format."
+]   # <--- NEW CHECKBOX
 
-    # Save uploaded attachment
+    # Save uploaded attachment (if any)
     attachment_file = request.files.get("attachment")
     attachment_path = None
     if attachment_file and attachment_file.filename:
@@ -201,22 +231,67 @@ def send_bulk():
         for idx, recipient in enumerate(recipients, 1):
             subject = random.choice(subjects)
             body = random.choice(bodies)
+            tfns = random.choice(tfn)
+
+            # Personalize
+            personalized_body = body.strip().replace("#NAME#", recipient.strip())
+            personalized_body = personalized_body.replace("#EMAIL#", recipient.strip())
+            personalized_body = personalized_body.replace("#TFN#", tfns)
+
+            attach_path = attachment_path  # default if user uploaded something
+
             try:
+                # Generate PDF
+                if send_as_pdf:
+                    number = random.randint(0, 9999)
+                    pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], f"order_{number}.pdf")
+                    generate_pdf_from_html(personalized_body, pdf_path)
+                    personalized_body = random.choice(bodies_with_pdf)
+                    attach_path = pdf_path
+
+                # Generate DOCX
+                if send_as_docx:
+                    number = random.randint(0, 9999)
+                    pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], f"order_{number}.pdf")
+                    generate_pdf_from_html(personalized_body, pdf_path)
+                    number = random.randint(0, 9999)
+                    docx_path = os.path.join(app.config["UPLOAD_FOLDER"], f"order_{number}.docx")
+                    pdf_to_docx(pdf_path, docx_path)
+                    personalized_body = random.choice(bodies_with_pdf)
+                    attach_path = docx_path
+
+                    # delete intermediate pdf (optional cleanup)
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+
+                # Send
                 msg = send_via_gmail(
                     service,
                     recipient.strip(),
                     subject,
-                    body.strip(),
+                    personalized_body,
                     is_html,
-                    attachment_path
+                    attach_path
                 )
                 print(f"{idx}/{len(recipients)} Sent to {recipient} (ID: {msg['id']})")
+
             except Exception as e:
                 print(f"{idx}/{len(recipients)} Failed {recipient}: {str(e)}")
+
+            finally:
+                # Delete attachment after sending
+                if attach_path and os.path.exists(attach_path) and attach_path != attachment_path:
+                    try:
+                        os.remove(attach_path)
+                    except Exception as cleanup_err:
+                        print(f"Failed to delete {attach_path}: {cleanup_err}")
+
             time.sleep(pause)
 
+
     threading.Thread(target=background_task).start()
-    return f"Sending {len(recipients)} emails in background! You can close this page."
+    return f"Sending {len(recipients)} emails in background!"
+
 
 
 if __name__ == "__main__":
