@@ -13,18 +13,19 @@
 
     <h3>Subjects (one per line)</h3>
     <textarea name="subjects" rows="4" cols="40" required></textarea><br><br>
-
+    <h3>TFN here</h3>
+    <textarea name="tfn" rows="3" cols="40" required></textarea><br><br>
     <h3>Bodies</h3>
     <p>Separate multiple versions with <b>===</b></p>
     <textarea name="bodies" rows="8" cols="50" required></textarea><br><br>
 
     <input type="checkbox" name="html"> Send as HTML<br><br>
+    <input type="checkbox" name="pdf"> Send as PDF<br><br>
+    <input type="checkbox" name="docx"> Send as DOCX<br><br>
+
 
     <label>Pause between emails (seconds):</label><br>
     <input type="number" name="pause" value="5"><br><br>
-
-    <h3>Attachment (optional)</h3>
-    <input type="file" name="attachment"><br><br>
 
     <button type="submit">Send Bulk Emails</button>
   </form>
